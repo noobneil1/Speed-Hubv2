@@ -1,0 +1,349 @@
+-- Final Safe Merged UI
+-- LocalScript -> StarterGui
+-- Visual-only (no exploit code). For learning / UI design.
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+if not LocalPlayer then
+    warn("Put this as a LocalScript in StarterGui and test in Play mode.")
+    return
+end
+
+-- Config
+local FRAME_W, FRAME_H = 460, 420
+local FALLBACK_IMAGE = "rbxassetid://6031075931"
+
+-- safe thumbnail fetch
+local function safeThumbnail(userId)
+    local ok, img = pcall(function()
+        return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+    end)
+    return (ok and type(img) == "string" and img ~= "") and img or FALLBACK_IMAGE
+end
+
+-- helpers
+local function mkButton(parent, size, pos, txt, bg)
+    local b = Instance.new("TextButton", parent)
+    b.Size = size
+    b.Position = pos
+    b.Text = txt or ""
+    b.Font = Enum.Font.GothamSemibold
+    b.TextSize = 14
+    b.TextColor3 = Color3.fromRGB(255,255,255)
+    b.BackgroundColor3 = bg or Color3.fromRGB(70,70,70)
+    b.AutoButtonColor = false
+    local c = Instance.new("UICorner", b); c.CornerRadius = UDim.new(0,8)
+    return b
+end
+
+local function hoverTint(btn, hoverColor)
+    local normal = btn.BackgroundColor3
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = hoverColor}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = normal}):Play()
+    end)
+end
+
+local function clickPulse(button)
+    local orig = button.Size
+    TweenService:Create(button, TweenInfo.new(0.08), {Size = UDim2.new(orig.X.Scale, orig.X.Offset - 4, orig.Y.Scale, orig.Y.Offset - 2)}):Play()
+    task.delay(0.08, function()
+        TweenService:Create(button, TweenInfo.new(0.12), {Size = orig}):Play()
+    end)
+end
+
+-- ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MergedSafeUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Main frame (centered) - draggable
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, FRAME_W, 0, FRAME_H)
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(26,26,26)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+local mainCorner = Instance.new("UICorner", mainFrame); mainCorner.CornerRadius = UDim.new(0,12)
+
+-- subtle shadow
+local shadow = Instance.new("ImageLabel", mainFrame)
+shadow.Size = UDim2.new(1, 28, 1, 28); shadow.Position = UDim2.new(0, -14, 0, -14)
+shadow.BackgroundTransparency = 1; shadow.Image = "rbxassetid://1316045217"; shadow.ImageTransparency = 0.6; shadow.ZIndex = 0
+
+-- header: center "By: scriptmaker"
+local headerFrame = Instance.new("Frame", mainFrame)
+headerFrame.Size = UDim2.new(1, -24, 0, 50)
+headerFrame.Position = UDim2.new(0, 12, 0, 8)
+headerFrame.BackgroundTransparency = 1
+
+local title = Instance.new("TextLabel", headerFrame)
+title.Size = UDim2.new(0.6, 0, 1, 0)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Player Control"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextColor3 = Color3.fromRGB(190,120,255)
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local byLabel = Instance.new("TextLabel", headerFrame)
+byLabel.Size = UDim2.new(0.4, 0, 1, 0)
+byLabel.Position = UDim2.new(0.6, 0, 0, 0)
+byLabel.BackgroundTransparency = 1
+byLabel.Text = "By: scriptmaker"
+byLabel.Font = Enum.Font.Gotham
+byLabel.TextSize = 14
+byLabel.TextColor3 = Color3.fromRGB(200,200,200)
+byLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+-- top-right small area for bypass (visual)
+local topRight = Instance.new("Frame", mainFrame)
+topRight.Size = UDim2.new(0.5, -20, 0, 44)
+topRight.Position = UDim2.new(0.5, 10, 0, 8)
+topRight.BackgroundTransparency = 1
+
+local bypassBtn = mkButton(topRight, UDim2.new(0,120,0,34), UDim2.new(1, -130, 0, 6), "Bypass", Color3.fromRGB(70,70,70))
+hoverTint(bypassBtn, Color3.fromRGB(95,95,95))
+
+local loadingBg = Instance.new("Frame", topRight)
+loadingBg.Size = UDim2.new(0,120,0,6); loadingBg.Position = UDim2.new(1, -130, 1, 2); loadingBg.BackgroundColor3 = Color3.fromRGB(40,40,40)
+local lbCorner = Instance.new("UICorner", loadingBg); lbCorner.CornerRadius = UDim.new(0,6)
+local loadingFill = Instance.new("Frame", loadingBg); loadingFill.Size = UDim2.new(0,0,1,0); loadingFill.BackgroundColor3 = Color3.fromRGB(80,220,140)
+local fillCorner = Instance.new("UICorner", loadingFill); fillCorner.CornerRadius = UDim.new(0,6)
+
+-- toggles row
+local toggles = Instance.new("Frame", mainFrame)
+toggles.Size = UDim2.new(1, -24, 0, 44)
+toggles.Position = UDim2.new(0, 12, 0, 62)
+toggles.BackgroundTransparency = 1
+
+local autoToggle = mkButton(toggles, UDim2.new(0,170,0,36), UDim2.new(0,0,0,4), "Auto Accept: OFF", Color3.fromRGB(70,70,70))
+local freezeToggle = mkButton(toggles, UDim2.new(0,170,0,36), UDim2.new(0,180,0,4), "Freeze: OFF", Color3.fromRGB(70,70,70))
+local stopAllBtn = mkButton(toggles, UDim2.new(0,80,0,36), UDim2.new(1, -92, 0, 4), "Stop All", Color3.fromRGB(110,110,110))
+hoverTint(autoToggle, Color3.fromRGB(95,95,95)); hoverTint(freezeToggle, Color3.fromRGB(95,95,95)); hoverTint(stopAllBtn, Color3.fromRGB(140,140,140))
+
+-- avatar list area
+local scroll = Instance.new("ScrollingFrame", mainFrame)
+scroll.Size = UDim2.new(1, -24, 1, -150)
+scroll.Position = UDim2.new(0, 12, 0, 120)
+scroll.BackgroundTransparency = 1
+scroll.ScrollBarThickness = 8
+local listLayout = Instance.new("UIListLayout", scroll)
+listLayout.Padding = UDim.new(0,10)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    scroll.CanvasSize = UDim2.new(0,0,0, listLayout.AbsoluteContentSize.Y + 12)
+end)
+
+-- control panel overlay (centered) with Back button on upper side
+local controlFrame = Instance.new("Frame", screenGui)
+controlFrame.Name = "ControlFrame"
+controlFrame.Size = UDim2.new(0, 320, 0, 320)
+controlFrame.AnchorPoint = Vector2.new(0.5,0.5)
+controlFrame.Position = UDim2.new(0.5,0.5)
+controlFrame.BackgroundColor3 = Color3.fromRGB(24,24,24)
+controlFrame.BorderSizePixel = 0
+controlFrame.Visible = false
+controlFrame.ClipsDescendants = true
+local ctrlCorner = Instance.new("UICorner", controlFrame); ctrlCorner.CornerRadius = UDim.new(0,12)
+
+local ctrlTitle = Instance.new("TextLabel", controlFrame)
+ctrlTitle.Size = UDim2.new(1, -24, 0, 40); ctrlTitle.Position = UDim2.new(0,12,0,8)
+ctrlTitle.BackgroundTransparency = 1; ctrlTitle.Font = Enum.Font.GothamBold; ctrlTitle.TextSize = 18; ctrlTitle.TextColor3 = Color3.fromRGB(190,120,255)
+ctrlTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Back button moved to upper side (always visible)
+local backBtn = mkButton(controlFrame, UDim2.new(0, 80, 0, 34), UDim2.new(1, -92, 0, 8), "Back", Color3.fromRGB(90,90,90))
+backBtn.AnchorPoint = Vector2.new(0,0)
+hoverTint(backBtn, Color3.fromRGB(120,120,120))
+
+local ctrlAvatar = Instance.new("ImageLabel", controlFrame)
+ctrlAvatar.Size = UDim2.new(0,120,0,120); ctrlAvatar.Position = UDim2.new(0.5, -60, 0, 56); ctrlAvatar.BackgroundTransparency = 1
+
+local ctrlName = Instance.new("TextLabel", controlFrame)
+ctrlName.Size = UDim2.new(1, -24, 0, 28); ctrlName.Position = UDim2.new(0, 12, 0, 190); ctrlName.BackgroundTransparency = 1; ctrlName.Font = Enum.Font.GothamBold; ctrlName.TextSize = 18; ctrlName.TextColor3 = Color3.fromRGB(255,255,255)
+
+local ctrlFreeze = mkButton(controlFrame, UDim2.new(0,160,0,40), UDim2.new(0.5, -80, 0, 230), "Freeze Trade", Color3.fromRGB(50,160,80))
+local ctrlForce  = mkButton(controlFrame, UDim2.new(0,160,0,40), UDim2.new(0.5, -80, 0, 280), "Force Accept", Color3.fromRGB(170,60,60))
+hoverTint(ctrlFreeze, Color3.fromRGB(100,200,120)); hoverTint(ctrlForce, Color3.fromRGB(220,120,120))
+
+-- make frames draggable
+local function makeDraggable(frame)
+    frame.Active = true
+    local dragging, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            UserInputService.InputChanged:Connect(function(move)
+                if dragging and move == input then
+                    local delta = move.Position - dragStart
+                    frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                end
+            end)
+        end
+    end)
+end
+makeDraggable(mainFrame)
+makeDraggable(controlFrame)
+
+-- state (visual-only)
+local selectedPlayer = nil
+local autoOn = false
+local freezeOn = false
+
+-- create player row with avatar icon
+local function createPlayerRow(plr)
+    local row = Instance.new("Frame", scroll)
+    row.Size = UDim2.new(1, -8, 0, 72)
+    row.BackgroundColor3 = Color3.fromRGB(34,34,34)
+    row.BorderSizePixel = 0
+    local rCorner = Instance.new("UICorner", row); rCorner.CornerRadius = UDim.new(0,10)
+
+    local thumb = Instance.new("ImageLabel", row)
+    thumb.Size = UDim2.new(0,60,0,60); thumb.Position = UDim2.new(0,8,0,6); thumb.BackgroundTransparency = 1
+    thumb.Image = safeThumbnail(plr.UserId)
+
+    local name = Instance.new("TextLabel", row)
+    name.Size = UDim2.new(1, -90, 1, 0); name.Position = UDim2.new(0, 80, 0, 0)
+    name.BackgroundTransparency = 1; name.Font = Enum.Font.Gotham; name.TextSize = 16; name.TextColor3 = Color3.fromRGB(240,240,240); name.TextXAlignment = Enum.TextXAlignment.Left
+    name.Text = plr.Name
+
+    local stroke = Instance.new("UIStroke", row)
+    stroke.Color = Color3.fromRGB(180,100,255)
+    stroke.Thickness = 2
+    stroke.Transparency = 1
+
+    -- click/tap open control panel
+    row.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            clickPulse(row)
+            -- clear others highlight
+            for _,v in pairs(scroll:GetChildren()) do
+                if v:IsA("Frame") then
+                    local s = v:FindFirstChildOfClass("UIStroke")
+                    if s then s.Transparency = 1 end
+                end
+            end
+            stroke.Transparency = 0
+            selectedPlayer = plr
+
+            -- populate control panel
+            ctrlTitle.Text = "Controls — " .. plr.Name
+            ctrlAvatar.Image = safeThumbnail(plr.UserId)
+            ctrlName.Text = plr.Name
+
+            controlFrame.Size = UDim2.new(0, 240, 0, 240)
+            controlFrame.Visible = true
+            TweenService:Create(controlFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {Size = UDim2.new(0,320,0,320)}):Play()
+            mainFrame.Visible = false
+        end
+    end)
+end
+
+-- refresh player list
+local function refreshList()
+    for _,c in pairs(scroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then createPlayerRow(plr) end
+    end
+end
+Players.PlayerAdded:Connect(refreshList)
+Players.PlayerRemoving:Connect(refreshList)
+refreshList()
+
+-- toggles visual handlers
+autoToggle.MouseButton1Click:Connect(function()
+    clickPulse(autoToggle)
+    autoOn = not autoOn
+    autoToggle.Text = "Auto Accept: " .. (autoOn and "ON" or "OFF")
+    autoToggle.BackgroundColor3 = autoOn and Color3.fromRGB(70,160,90) or Color3.fromRGB(70,70,70)
+end)
+
+freezeToggle.MouseButton1Click:Connect(function()
+    clickPulse(freezeToggle)
+    freezeOn = not freezeOn
+    freezeToggle.Text = "Freeze: " .. (freezeOn and "ON" or "OFF")
+    freezeToggle.BackgroundColor3 = freezeOn and Color3.fromRGB(160,80,200) or Color3.fromRGB(70,70,70)
+end)
+
+stopAllBtn.MouseButton1Click:Connect(function()
+    clickPulse(stopAllBtn)
+    autoOn = false; freezeOn = false
+    autoToggle.Text = "Auto Accept: OFF"; autoToggle.BackgroundColor3 = Color3.fromRGB(70,70,70)
+    freezeToggle.Text = "Freeze: OFF"; freezeToggle.BackgroundColor3 = Color3.fromRGB(70,70,70)
+end)
+
+-- bypass visual loading
+bypassBtn.MouseButton1Click:Connect(function()
+    if loadingFill.Size.X.Scale > 0.99 then return end
+    clickPulse(bypassBtn)
+    bypassBtn.Text = "Loading..."
+    local steps = 60
+    for i = 1, steps do
+        loadingFill.Size = UDim2.new(i/steps, 0, 1, 0)
+        task.wait(0.01 + (i/steps)*0.005)
+    end
+    bypassBtn.Text = "Bypassed"
+    bypassBtn.BackgroundColor3 = Color3.fromRGB(80,200,120)
+end)
+
+-- control panel actions (visual only)
+ctrlFreeze.MouseButton1Click:Connect(function()
+    if not selectedPlayer then return end
+    clickPulse(ctrlFreeze)
+    ctrlFreeze.Text = "Frozen ✓"
+    ctrlFreeze.BackgroundColor3 = Color3.fromRGB(40,200,120)
+    task.delay(1.4, function() ctrlFreeze.Text = "Freeze Trade"; ctrlFreeze.BackgroundColor3 = Color3.fromRGB(50,160,80) end)
+    print("[VISUAL] Freeze for:", selectedPlayer.Name)
+end)
+
+ctrlForce.MouseButton1Click:Connect(function()
+    if not selectedPlayer then return end
+    clickPulse(ctrlForce)
+    ctrlForce.Text = "Accepted ✓"
+    ctrlForce.BackgroundColor3 = Color3.fromRGB(240,140,140)
+    task.delay(1.4, function() ctrlForce.Text = "Force Accept"; ctrlForce.BackgroundColor3 = Color3.fromRGB(170,60,60) end)
+    print("[VISUAL] Force for:", selectedPlayer.Name)
+end)
+
+-- Back button on upper side behaviour
+backBtn.MouseButton1Click:Connect(function()
+    clickPulse(backBtn)
+    TweenService:Create(controlFrame, TweenInfo.new(0.12), {Size = UDim2.new(0,240,0,240)}):Play()
+    task.delay(0.12, function()
+        controlFrame.Visible = false
+        -- clear highlights
+        for _,v in pairs(scroll:GetChildren()) do
+            if v:IsA("Frame") then
+                local s = v:FindFirstChildOfClass("UIStroke")
+                if s then s.Transparency = 1 end
+            end
+        end
+        mainFrame.Visible = true
+    end)
+end)
+
+-- entrance
+mainFrame.Size = UDim2.new(0, FRAME_W*0.92, 0, FRAME_H*0.92)
+mainFrame.BackgroundTransparency = 1
+TweenService:Create(mainFrame, TweenInfo.new(0.18), {Size = UDim2.new(0, FRAME_W, 0, FRAME_H), BackgroundTransparency = 0.1}):Play()
+
+print("[MergedSafeUI] ready — drop into StarterGui as LocalScript and test in Play mode.")
